@@ -1,0 +1,25 @@
+{
+  "hallOfFame": [
+    {
+      "name": "CyberNinja",
+      "score": 380,
+      "accuracy": 92,
+      "date": 1700000000000
+    },
+    {
+      "name": "DeagleKing",
+      "score": 290,
+      "accuracy": 88,
+      "date": 1700000000000
+    },
+    {
+      "name": "SniperGhost",
+      "score": 210,
+      "accuracy": 85,
+      "date": 1700000000000
+    }
+  ],
+  "matchHistory": [],
+  "conflictLogs": [],
+  "savedAt": 1700000000000
+}

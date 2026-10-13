@@ -1,0 +1,667 @@
+/* ==========================================================================
+   Cyber Aim (Aim Lab Multiplayer) - Киберспортивный неоновый UI
+   ========================================================================== */
+
+:root {
+  --bg-main: #0a0c10;
+  --bg-surface: #10141d;
+  --bg-card: #151a26;
+  --bg-card-hover: #1c2333;
+  --border-color: #242c3e;
+  --border-focus: #00f5d4;
+  --text-main: #f0f3f8;
+  --text-muted: #8b9bb4;
+  --color-primary: #00f5d4;
+  --color-primary-hover: #00d2b6;
+  --color-accent: #ff007f;
+  --color-danger: #ff4757;
+  --color-warning: #ffa502;
+  --color-success: #2ed573;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --shadow: 0 4px 25px rgba(0, 0, 0, 0.6);
+  --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-main);
+  color: var(--text-main);
+  font-family: var(--font-family);
+  font-size: 14px;
+  line-height: 1.5;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* --- Хедер --- */
+.app-header {
+  height: 64px;
+  background-color: var(--bg-surface);
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  z-index: 10;
+  flex-shrink: 0;
+}
+
+.logo-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.game-icon {
+  font-size: 26px;
+}
+
+.logo-title {
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: 1.5px;
+  background: linear-gradient(135deg, #00f5d4, #ff007f);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.badge {
+  font-size: 10px;
+  text-transform: uppercase;
+  background: rgba(0, 245, 212, 0.15);
+  border: 1px solid rgba(0, 245, 212, 0.4);
+  color: var(--color-primary);
+  padding: 2px 6px;
+  border-radius: 4px;
+  -webkit-text-fill-color: var(--color-primary);
+}
+
+.badge-warning {
+  background: rgba(255, 165, 2, 0.15);
+  border-color: rgba(255, 165, 2, 0.4);
+  color: var(--color-warning);
+  -webkit-text-fill-color: var(--color-warning);
+}
+
+.badge-accent {
+  background: rgba(255, 0, 127, 0.15);
+  border-color: rgba(255, 0, 127, 0.4);
+  color: var(--color-accent);
+  -webkit-text-fill-color: var(--color-accent);
+}
+
+/* Центральный таймер раунда */
+.round-timer-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 180px;
+}
+.timer-label {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: var(--color-primary);
+}
+.timer-value {
+  font-size: 24px;
+  font-weight: 900;
+  font-family: monospace;
+  color: #fff;
+  line-height: 1.1;
+  text-shadow: 0 0 10px rgba(0, 245, 212, 0.4);
+}
+.timer-bar {
+  width: 100%;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 4px;
+}
+.timer-bar-fill {
+  height: 100%;
+  width: 100%;
+  background: var(--color-primary);
+  transition: width 0.3s linear, background-color 0.3s;
+}
+
+.header-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.status-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.05);
+}
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+.status-badge.connected .status-dot {
+  background: var(--color-success);
+  box-shadow: 0 0 8px var(--color-success);
+}
+.status-badge.connecting .status-dot {
+  background: var(--color-warning);
+  animation: pulse 1.2s infinite;
+}
+.status-badge.disconnected .status-dot {
+  background: var(--color-danger);
+  box-shadow: 0 0 8px var(--color-danger);
+}
+
+/* --- Офлайн баннер --- */
+.offline-banner {
+  background: linear-gradient(90deg, #ff4757, #ff6b81);
+  color: #fff;
+  padding: 8px 20px;
+  font-size: 13px;
+  box-shadow: 0 2px 10px rgba(255, 71, 87, 0.3);
+  z-index: 9;
+}
+.offline-banner.hidden {
+  display: none;
+}
+.offline-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* --- Сетка макета --- */
+.game-layout {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 290px 1fr 310px;
+  height: calc(100vh - 64px);
+  overflow: hidden;
+}
+
+.sidebar {
+  background-color: var(--bg-surface);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+}
+.sidebar-left { border-right: 1px solid var(--border-color); }
+.sidebar-right { border-left: 1px solid var(--border-color); }
+
+/* --- Карточки --- */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 12px;
+}
+.card-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+.card-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.section-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+/* Профиль игрока */
+.player-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.player-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background-color: var(--color-primary);
+  flex-shrink: 0;
+}
+.player-name {
+  font-weight: 700;
+  font-size: 14px;
+}
+.player-role {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* Сетка личной статистики */
+.stat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.stat-box {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 8px;
+  text-align: center;
+}
+.stat-number {
+  font-size: 18px;
+  font-weight: 900;
+  font-family: monospace;
+}
+.stat-number.score-val {
+  color: var(--color-primary);
+}
+.stat-name {
+  font-size: 9px;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+/* Живой счет раунда */
+.live-players-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-height: 170px;
+  overflow-y: auto;
+}
+.player-score-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+}
+.player-score-row.my-row {
+  border: 1px solid var(--color-primary);
+  background: rgba(0, 245, 212, 0.05);
+}
+.row-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.rank-badge {
+  font-weight: 800;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.player-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.player-name-txt {
+  font-weight: 600;
+}
+.row-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.accuracy-tag {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.score-tag {
+  font-family: monospace;
+  color: #fff;
+  font-size: 13px;
+}
+
+/* Зал славы */
+.hall-of-fame-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 140px;
+}
+.leaderboard-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  overflow-y: auto;
+}
+.leaderboard-item {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  padding: 5px 8px;
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: var(--radius-sm);
+}
+.leaderboard-rank {
+  font-weight: 700;
+  color: var(--color-accent);
+  margin-right: 6px;
+}
+
+/* --- Холст Арены --- */
+.canvas-container {
+  position: relative;
+  background: #0a0c10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+canvas#aimCanvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: none; /* скрываем системный курсор для кастомного прицела */
+}
+
+/* Легенда мишеней */
+.arena-legend {
+  position: absolute;
+  bottom: 12px;
+  display: flex;
+  gap: 16px;
+  background: rgba(16, 20, 29, 0.85);
+  backdrop-filter: blur(4px);
+  padding: 6px 16px;
+  border-radius: 20px;
+  border: 1px solid var(--border-color);
+  font-size: 11px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.dot-cyan { background-color: #00f5d4; }
+.dot-yellow { background-color: #ffbe0b; }
+.dot-pink { background-color: #ff007f; }
+.dot-red { background-color: #ff4757; }
+
+/* Оверлей конца раунда */
+.round-end-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(10, 12, 16, 0.85);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+}
+.round-end-overlay.hidden {
+  display: none;
+}
+.round-end-modal {
+  background: var(--bg-card);
+  border: 2px solid var(--color-primary);
+  border-radius: var(--radius-lg);
+  padding: 28px 36px;
+  text-align: center;
+  box-shadow: 0 0 30px rgba(0, 245, 212, 0.3);
+  max-width: 420px;
+  width: 90%;
+}
+.round-end-title {
+  font-size: 24px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  color: #fff;
+  margin-bottom: 6px;
+}
+.winner-announcement {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-primary);
+  margin-bottom: 18px;
+}
+.podium-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+.podium-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+.next-round-counter {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.next-round-counter span {
+  font-weight: 800;
+  color: var(--color-warning);
+}
+
+/* --- Журнал конфликтов (Обязательно для 8-10) --- */
+.conflict-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 220px;
+  max-height: 350px;
+}
+.conflict-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-right: 4px;
+}
+.conflict-item {
+  background: rgba(255, 71, 87, 0.08);
+  border-left: 3px solid var(--color-danger);
+  padding: 8px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+.conflict-meta {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+.conflict-res {
+  color: var(--color-warning);
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+/* --- Чат --- */
+.chat-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 200px;
+}
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-right: 4px;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+.chat-msg {
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 4px;
+}
+.chat-author {
+  font-weight: 700;
+  color: var(--color-primary);
+  margin-right: 6px;
+}
+.chat-system-msg {
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 11px;
+  text-align: center;
+}
+.chat-input-row {
+  display: flex;
+  gap: 8px;
+}
+
+/* --- Кнопки и формы --- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+.btn-primary {
+  background: var(--color-primary);
+  color: #0a0c10;
+  padding: 8px 16px;
+}
+.btn-primary:hover {
+  background: var(--color-primary-hover);
+  box-shadow: 0 0 12px rgba(0, 245, 212, 0.4);
+}
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-main);
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+}
+.btn-secondary:hover { background: rgba(255, 255, 255, 0.12); }
+.btn-dark {
+  background: rgba(16, 20, 29, 0.85);
+  color: var(--text-main);
+  border: 1px solid var(--border-color);
+  padding: 6px 12px;
+}
+.btn-sm { font-size: 12px; padding: 6px 10px; }
+.btn-xs { font-size: 11px; padding: 4px 8px; }
+.btn-block { width: 100%; padding: 12px; }
+
+.form-input {
+  width: 100%;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-main);
+  padding: 8px 12px;
+  font-size: 13px;
+  outline: none;
+  font-family: inherit;
+}
+.form-input:focus { border-color: var(--border-focus); }
+
+/* Модалка логина */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.modal-overlay.hidden { display: none; }
+.modal-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  width: 90%;
+  max-width: 440px;
+  padding: 28px;
+  box-shadow: var(--shadow);
+}
+.modal-title { font-size: 20px; margin-bottom: 8px; }
+.modal-desc { font-size: 13px; color: var(--text-muted); margin-bottom: 20px; }
+.form-group { margin-bottom: 18px; }
+.form-group label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.modal-color-picker {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+}
+.modal-color-opt {
+  aspect-ratio: 1;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 3px solid transparent;
+  transition: transform 0.15s;
+}
+.modal-color-opt:hover { transform: scale(1.15); }
+.modal-color-opt.active {
+  border-color: #fff;
+  transform: scale(1.1);
+}
+
+.text-success { color: var(--color-success) !important; }
+.text-danger { color: var(--color-danger) !important; }
+
+@keyframes pulse {
+  0% { transform: scale(0.95); opacity: 0.7; }
+  50% { transform: scale(1.2); opacity: 1; }
+  100% { transform: scale(0.95); opacity: 0.7; }
+}
+
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
