@@ -3,71 +3,76 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Cyber Aim — Сетевой Aim Trainer (Лабораторная №4)</title>
+  <title>Cyber Aim</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎯</text></svg>">
 </head>
 <body>
-  <!-- Верхний киберспортивный хедер -->
   <header class="app-header">
     <div class="logo-group">
       <span class="game-icon">🎯</span>
-      <h1 class="logo-title">CYBER AIM <span class="badge">Realtime Arena</span></h1>
+      <h1 class="logo-title">CYBER AIM <span class="badge">Arena</span></h1>
     </div>
 
-    <!-- Главный таймер раунда -->
     <div class="round-timer-box">
-      <div class="timer-label" id="roundStatusLabel">ИДЕТ РАУНД</div>
+      <div class="timer-label" id="roundStatusLabel">ЛОББИ (ОЖИДАНИЕ)</div>
       <div class="timer-value" id="roundTimerDisplay">00:45</div>
       <div class="timer-bar"><div class="timer-bar-fill" id="timerBarFill"></div></div>
     </div>
 
     <div class="header-status">
-      <!-- Статус сокета -->
       <div id="connectionStatus" class="status-badge connecting">
         <span class="status-dot"></span>
         <span id="statusText">Подключение...</span>
       </div>
 
-      <!-- Кнопка симуляции офлайна (для защиты лабы на 8-10 баллов) -->
-      <button id="toggleOfflineBtn" class="btn btn-secondary btn-sm" title="Тестирование игры при обрыве сети">
-        📶 Офлайн режим: <b id="simOfflineState">ВЫКЛ</b>
+      <button id="toggleOfflineBtn" class="btn btn-secondary btn-sm">
+        📶 Офлайн: <b id="simOfflineState">ВЫКЛ</b>
       </button>
 
-      <!-- Звук -->
-      <button id="toggleSoundBtn" class="btn btn-dark btn-sm" title="Включить/выключить звук">🔊 Звук: ВКЛ</button>
+      <button id="toggleSoundBtn" class="btn btn-dark btn-sm">🔊 Звук: ВКЛ</button>
     </div>
   </header>
 
-  <!-- Баннер офлайн-режима -->
   <div id="offlineBanner" class="offline-banner hidden">
     <div class="offline-content">
       <span class="warning-icon">⚠️</span>
       <div>
-        <strong>Связь потеряна:</strong> Офлайн-режим активен. Попадания накапливаются в локальную очередь (<span id="offlineQueueCount">0</span> выстрелов).
+        <strong>Связь потеряна:</strong> Офлайн-режим активен. Выстрелы буферизуются в SessionStorage (<span id="offlineQueueCount">0</span> в очереди).
       </div>
-      <button id="retryConnectBtn" class="btn btn-primary btn-xs">Восстановить соединение</button>
+      <button id="retryConnectBtn" class="btn btn-primary btn-xs">Подключиться</button>
     </div>
   </div>
 
-  <!-- Основная область игры -->
+  <div id="conflictToast" class="conflict-toast hidden">
+    <div class="conflict-toast-icon">⚡</div>
+    <div class="conflict-toast-body">
+      <strong id="conflictToastTitle">Коллизия цели</strong>
+      <span id="conflictToastDesc"></span>
+    </div>
+  </div>
+
   <main class="game-layout">
-    <!-- Левая колонка: Профиль, текущая статистика, Зал славы -->
     <aside class="sidebar sidebar-left">
-      <!-- Профиль игрока -->
+      <div class="card start-game-card">
+        <button id="startGameBtn" class="btn btn-primary btn-block btn-pulse">
+          ▶ НАЧАТЬ РАУНД (45с)
+        </button>
+        <div class="start-hint" id="startHint">Нажмите, чтобы запустить соревнование</div>
+      </div>
+
       <div class="card player-card">
         <div class="player-info">
           <div id="playerAvatar" class="player-avatar"></div>
           <div>
             <div id="playerNameDisplay" class="player-name">Стрелок</div>
-            <div class="player-role">Прицел: активен</div>
+            <button id="changeNameBtn" class="btn-link">✏️ Сменить ник</button>
           </div>
         </div>
       </div>
 
-      <!-- Личная статистика за раунд -->
       <div class="card stats-card">
-        <h3 class="card-title">📊 Ваша статистика</h3>
+        <h3 class="card-title">Ваша статистика</h3>
         <div class="stat-grid">
           <div class="stat-box">
             <div class="stat-number score-val" id="myScore">0</div>
@@ -88,41 +93,56 @@
         </div>
       </div>
 
-      <!-- Живой счет раунда (Live Leaderboard) -->
       <div class="card leaderboard-card">
-        <h3 class="card-title">⚔️ Игроки в раунде</h3>
-        <ul id="livePlayersList" class="live-players-list">
-          <!-- Генерируется динамически -->
-        </ul>
+        <h3 class="card-title">Игроки на арене</h3>
+        <ul id="livePlayersList" class="live-players-list"></ul>
       </div>
 
-      <!-- Зал славы (Сохранение между запусками) -->
       <div class="card hall-of-fame-card">
         <div class="card-header-row">
-          <h3 class="card-title">🏆 Рекорды всех времен</h3>
-          <span class="badge badge-accent">Persistence</span>
+          <h3 class="card-title">Топ рекордов</h3>
+          <span class="badge badge-accent">База</span>
         </div>
         <ol id="hallOfFameList" class="leaderboard-list">
-          <li class="empty-hint">Загрузка рекордов...</li>
+          <li class="empty-hint">Загрузка...</li>
         </ol>
       </div>
     </aside>
 
-    <!-- Центр: Игровая арена (Aim Arena Canvas) -->
     <section class="canvas-container" id="arenaContainer">
       <canvas id="aimCanvas"></canvas>
 
-      <!-- Оверлей окончания раунда -->
-      <div id="roundEndOverlay" class="round-end-overlay hidden">
-        <div class="round-end-modal">
-          <h2 class="round-end-title">РАУНД ЗАВЕРШЕН!</h2>
-          <div class="winner-announcement" id="winnerAnnouncement">Победитель: Стрелок</div>
-          <div class="podium-list" id="roundPodiumList"></div>
-          <div class="next-round-counter">Следующий раунд начнется через <span id="nextRoundTimer">5</span> сек...</div>
+      <div id="pauseOverlay" class="round-end-overlay hidden">
+        <div class="round-end-modal pause-modal">
+          <div class="modal-big-icon">⏸️</div>
+          <h2 class="round-end-title">ИГРА ПРИОСТАНОВЛЕНА</h2>
+          <div class="pause-player-info" id="pausePlayerInfo">Игрок отключился</div>
+          <div class="pause-timer-counter" id="pauseTimerCounter">15</div>
+          <p class="pause-desc" id="pauseDesc">Ожидание возвращения игрока...</p>
         </div>
       </div>
 
-      <!-- Подсказки по целям внизу арены -->
+      <div id="lobbyOverlay" class="round-end-overlay">
+        <div class="round-end-modal">
+          <div class="modal-big-icon">🎯</div>
+          <h2 class="round-end-title">CYBER AIM ARENA</h2>
+          <p class="lobby-desc">Подключено участников: <b id="lobbyPlayerCount">1</b>.<br>Уничтожайте появляющиеся мишени быстрее соперников!</p>
+          <button id="modalStartBtn" class="btn btn-primary btn-block btn-lg">▶ НАЧАТЬ ИГРУ</button>
+        </div>
+      </div>
+
+      <div id="roundEndOverlay" class="round-end-overlay hidden">
+        <div class="round-end-modal">
+          <h2 class="round-end-title">РАУНД ЗАВЕРШЕН</h2>
+          <div class="winner-announcement" id="winnerAnnouncement">Победитель: Стрелок</div>
+          <div class="round-end-reason" id="roundEndReason"></div>
+          <div class="podium-list" id="roundPodiumList"></div>
+          <button id="playAgainBtn" class="btn btn-primary btn-block btn-lg" style="margin-top: 14px;">
+            🔄 СЫГРАТЬ ЕЩЕ РАЗ
+          </button>
+        </div>
+      </div>
+
       <div class="arena-legend">
         <span class="legend-item"><span class="legend-dot dot-cyan"></span> Стандарт: +10</span>
         <span class="legend-item"><span class="legend-dot dot-yellow"></span> Бонус: +25</span>
@@ -130,60 +150,29 @@
         <span class="legend-item"><span class="legend-dot dot-red"></span> Бомба: -20</span>
       </div>
     </section>
-
-    <!-- Правая колонка: Журнал коллизий/конфликтов и Чат -->
-    <aside class="sidebar sidebar-right">
-      <!-- Журнал конфликтов (Обязательно для 8-10 баллов) -->
-      <div class="card conflict-card">
-        <div class="card-header-row">
-          <h3 class="card-title">⚡ Разрешение конфликтов</h3>
-          <span class="badge badge-warning">OCC Concurrency</span>
-        </div>
-        <p class="section-desc">Когда два стрелка кликают в одну цель одновременно, сервер определяет первенство по таймштампу:</p>
-        <div id="conflictLogList" class="conflict-list">
-          <div class="empty-hint">Конфликтов пока нет. При одновременном выстреле нескольких игроков здесь появится запись!</div>
-        </div>
-      </div>
-
-      <!-- Чат арены -->
-      <div class="card chat-card">
-        <h3 class="card-title">💬 Чат арены</h3>
-        <div id="chatMessages" class="chat-messages">
-          <div class="chat-system-msg">Добро пожаловать в Cyber Aim! Кликайте по появляющимся мишеням.</div>
-        </div>
-        <form id="chatForm" class="chat-input-row">
-          <input type="text" id="chatInput" placeholder="Сообщение..." class="form-input" autocomplete="off" maxlength="150">
-          <button type="submit" class="btn btn-primary">➤</button>
-        </form>
-      </div>
-    </aside>
   </main>
 
-  <!-- Модальное окно входа / кастомизации прицела -->
   <div id="loginModal" class="modal-overlay">
     <div class="modal-card">
-      <h2 class="modal-title">🎯 Cyber Aim: Мультиплеер</h2>
-      <p class="modal-desc">Соревнуйтесь на скорость реакции и точность в реальном времени с другими игроками через WebSockets.</p>
+      <h2 class="modal-title">Вход на арену</h2>
+      <p class="modal-desc">Соревнуйтесь на скорость реакции и точность в реальном времени с другими игроками.</p>
 
       <form id="loginForm">
         <div class="form-group">
           <label for="playerNameInput">Ваш никнейм:</label>
-          <input type="text" id="playerNameInput" class="form-input" placeholder="Введите позывной стрелка..." required maxlength="18">
+          <input type="text" id="playerNameInput" class="form-input" placeholder="Введите позывной..." required maxlength="18">
         </div>
 
         <div class="form-group">
           <label>Цвет лазерного прицела:</label>
-          <div class="modal-color-picker" id="modalColors">
-            <!-- Цвета -->
-          </div>
+          <div class="modal-color-picker" id="modalColors"></div>
         </div>
 
-        <button type="submit" class="btn btn-primary btn-block">Войти на арену</button>
+        <button type="submit" class="btn btn-primary btn-block">Войти в лобби</button>
       </form>
     </div>
   </div>
 
-  <!-- Подключение чистых скриптов без сторонних библиотек -->
   <script src="js/storage.js"></script>
   <script src="js/network.js"></script>
   <script src="js/audio.js"></script>

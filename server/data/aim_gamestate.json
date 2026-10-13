@@ -13,13 +13,29 @@
       "date": 1700000000000
     },
     {
+      "name": "12e1",
+      "score": 255,
+      "accuracy": 56,
+      "date": 1791926904050
+    },
+    {
+      "name": "Бахмут",
+      "score": 225,
+      "accuracy": 68,
+      "date": 1791925779747
+    },
+    {
       "name": "SniperGhost",
       "score": 210,
       "accuracy": 85,
       "date": 1700000000000
+    },
+    {
+      "name": "dqwdq",
+      "score": 0,
+      "accuracy": 100,
+      "date": 1791927768328
     }
   ],
-  "matchHistory": [],
-  "conflictLogs": [],
-  "savedAt": 1700000000000
+  "savedAt": 1791927774888
 }

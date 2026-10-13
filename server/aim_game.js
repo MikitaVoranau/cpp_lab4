@@ -3,7 +3,7 @@ const storage = require('./storage');
 const ARENA_WIDTH = 1000;
 const ARENA_HEIGHT = 650;
 const ROUND_DURATION_SEC = 45;
-const INTERMISSION_SEC = 5;
+const DISCONNECT_TIMEOUT_SEC = 15;
 
 class AimGame {
   constructor(broadcastCallback) {
@@ -11,82 +11,209 @@ class AimGame {
     this.width = ARENA_WIDTH;
     this.height = ARENA_HEIGHT;
 
-    this.roundState = 'waiting'; // 'waiting' | 'running' | 'intermission'
+    this.roundState = 'lobby';
     this.timeLeft = ROUND_DURATION_SEC;
     this.roundTimer = null;
-    this.targetSpawnTimer = null;
 
-    this.targets = new Map(); // id => target
-    this.recentHits = new Map(); // targetId => { hitBy, hitTime, version } (for conflict detection)
+    this.isPaused = false;
+    this.pausedPlayer = null;
+    this.pauseSecondsLeft = 0;
+    this.pauseTimer = null;
 
-    this.players = new Map(); // id => { id, name, color, score, hits, misses, accuracy, cursorX, cursorY }
-    this.conflictLogs = [];
-    this.chatMessages = [];
-    this.hallOfFame = []; // Топ рекордов всех времен
-    this.matchHistory = [];
+    this.targets = new Map();
+    this.recentHits = new Map();
+    this.players = new Map();
+    this.hallOfFame = [];
 
     this.init();
   }
 
   init() {
     const saved = storage.load();
-    if (saved) {
-      this.hallOfFame = saved.hallOfFame || [];
-      this.matchHistory = saved.matchHistory || [];
-      this.conflictLogs = saved.conflictLogs || [];
-      console.log(`[AimGame] Загружено ${this.hallOfFame.length} рекордов всех времен.`);
+    if (saved && Array.isArray(saved.hallOfFame)) {
+      this.hallOfFame = saved.hallOfFame;
+    }
+  }
+
+  getAvailableColor(preferredColor) {
+    const colors = ['#00f5d4', '#ff007f', '#ffbe0b', '#7b2cbf', '#3a86ff', '#2ed573'];
+    const usedColors = new Set(Array.from(this.players.values()).filter(p => p.connected).map(p => p.color));
+
+    if (preferredColor && !usedColors.has(preferredColor)) {
+      return preferredColor;
     }
 
-    // Состояние раунда инициализировано
+    const freeColors = colors.filter(c => !usedColors.has(c));
+    if (freeColors.length > 0) {
+      return freeColors[0];
+    }
+
+    return colors[Math.floor(Math.random() * colors.length)];
+  }
+
+  getUniqueName(desiredName) {
+    const base = (desiredName || 'Стрелок').trim();
+    const existingNames = new Set(
+      Array.from(this.players.values())
+        .filter(p => p.connected)
+        .map(p => p.name.toLowerCase())
+    );
+
+    let finalName = base;
+    let counter = 2;
+    while (existingNames.has(finalName.toLowerCase())) {
+      finalName = `${base} (${counter++})`;
+    }
+    return finalName;
   }
 
   addPlayer(id, name, color) {
+    const cleanName = (name || `Стрелок #${id.slice(-4)}`).trim();
+
+    if (this.isPaused && this.pausedPlayer && this.pausedPlayer.name.toLowerCase() === cleanName.toLowerCase()) {
+      this.clearPause();
+      const restored = {
+        ...this.pausedPlayer,
+        id,
+        connected: true,
+        cursorX: this.width / 2,
+        cursorY: this.height / 2
+      };
+      this.players.set(id, restored);
+      this.pausedPlayer = null;
+      this.isPaused = false;
+
+      this.broadcast({
+        type: 'game_resumed',
+        playerName: restored.name,
+        players: this.getPlayersList()
+      });
+
+      return restored;
+    }
+
+    const uniqueName = this.getUniqueName(cleanName);
+    const assignedColor = this.getAvailableColor(color);
+
     const player = {
       id,
-      name: name || `Стрелок #${id.slice(-4)}`,
-      color: color || this.getRandomColor(),
+      name: uniqueName,
+      color: assignedColor,
       score: 0,
       hits: 0,
       misses: 0,
       accuracy: 100,
+      connected: true,
       cursorX: this.width / 2,
-      cursorY: this.height / 2,
-      connectedAt: Date.now()
+      cursorY: this.height / 2
     };
+
     this.players.set(id, player);
-
-    // Если игра еще не запущена и набрался хотя бы один игрок
-    if (this.roundState === 'waiting' && this.players.size > 0) {
-      this.startNewRound();
-    }
-
     return player;
   }
 
   removePlayer(id) {
-    this.players.delete(id);
-    if (this.players.size === 0) {
-      this.roundState = 'waiting';
-      this.targets.clear();
+    const player = this.players.get(id);
+    if (!player) return;
+
+    if (this.roundState === 'running') {
+      player.connected = false;
+
+      const activeRemaining = Array.from(this.players.values()).filter(p => p.connected);
+
+      if (activeRemaining.length === 0) {
+        this.clearPause();
+        this.roundState = 'lobby';
+        this.targets.clear();
+        if (this.roundTimer) {
+          clearInterval(this.roundTimer);
+          this.roundTimer = null;
+        }
+        this.players.delete(id);
+        return;
+      }
+
+      this.isPaused = true;
+      this.pausedPlayer = player;
+      this.pauseSecondsLeft = DISCONNECT_TIMEOUT_SEC;
+
+      this.broadcast({
+        type: 'game_paused',
+        playerName: player.name,
+        secondsLeft: this.pauseSecondsLeft,
+        activePlayersCount: activeRemaining.length
+      });
+
+      if (this.pauseTimer) clearInterval(this.pauseTimer);
+      this.pauseTimer = setInterval(() => {
+        this.pauseSecondsLeft--;
+
+        this.broadcast({
+          type: 'pause_tick',
+          playerName: player.name,
+          secondsLeft: this.pauseSecondsLeft
+        });
+
+        if (this.pauseSecondsLeft <= 0) {
+          this.handleDisconnectTimeout(player);
+        }
+      }, 1000);
+    } else {
+      this.players.delete(id);
+    }
+  }
+
+  handleDisconnectTimeout(timedOutPlayer) {
+    this.clearPause();
+    this.isPaused = false;
+    this.pausedPlayer = null;
+
+    const remainingActive = Array.from(this.players.values()).filter(p => p.connected);
+
+    if (remainingActive.length === 1) {
+      const winner = remainingActive[0];
+      this.endRoundWithWinner(winner, `Игрок ${timedOutPlayer.name} не вернулся. Техническая победа!`);
+    } else {
+      this.broadcast({
+        type: 'player_forfeited',
+        playerName: timedOutPlayer.name,
+        message: `Игрок ${timedOutPlayer.name} отключен. Его счет заморожен. Игра продолжается!`
+      });
+    }
+  }
+
+  clearPause() {
+    if (this.pauseTimer) {
+      clearInterval(this.pauseTimer);
+      this.pauseTimer = null;
     }
   }
 
   updatePlayerCursor(id, x, y) {
     const player = this.players.get(id);
-    if (player) {
+    if (player && player.connected) {
       player.cursorX = x;
       player.cursorY = y;
     }
   }
 
-  // --- Управление раундами ---
-  startNewRound() {
+  startGame(requestedByPlayerId) {
+    if (this.roundState === 'running') {
+      return { success: false, reason: 'Раунд уже идет' };
+    }
+
+    const starter = this.players.get(requestedByPlayerId);
+    const starterName = starter ? starter.name : 'Игрок';
+
+    this.clearPause();
+    this.isPaused = false;
+    this.pausedPlayer = null;
+
     this.roundState = 'running';
     this.timeLeft = ROUND_DURATION_SEC;
     this.targets.clear();
     this.recentHits.clear();
 
-    // Сброс очков игроков на текущий раунд
     for (const p of this.players.values()) {
       p.score = 0;
       p.hits = 0;
@@ -94,99 +221,101 @@ class AimGame {
       p.accuracy = 100;
     }
 
-    // Спавним стартовые 5 мишеней
     for (let i = 0; i < 5; i++) {
       this.spawnTarget();
     }
 
+    if (this.roundTimer) clearInterval(this.roundTimer);
+    this.roundTimer = setInterval(() => this.tick(), 1000);
+
     this.broadcast({
       type: 'round_started',
+      startedBy: starterName,
       duration: ROUND_DURATION_SEC,
       targets: Array.from(this.targets.values()),
       players: this.getPlayersList()
     });
 
-    if (this.roundTimer) clearInterval(this.roundTimer);
-    this.roundTimer = setInterval(() => this.tick(), 1000);
+    return { success: true };
   }
 
   tick() {
-    if (this.roundState === 'running') {
-      this.timeLeft--;
+    if (this.roundState !== 'running' || this.isPaused) return;
 
-      // Проверяем протухшие мишени
-      const now = Date.now();
-      for (const [id, target] of this.targets.entries()) {
-        if (now - target.spawnTime >= target.lifetime) {
-          this.targets.delete(id);
-          this.broadcast({ type: 'target_expired', targetId: id });
-          this.spawnTarget();
-        }
+    this.timeLeft--;
+
+    const now = Date.now();
+    for (const [id, target] of this.targets.entries()) {
+      if (now - target.spawnTime >= target.lifetime) {
+        this.targets.delete(id);
+        this.broadcast({ type: 'target_expired', targetId: id });
+        this.spawnTarget();
       }
+    }
 
-      this.broadcast({
-        type: 'time_sync',
-        timeLeft: this.timeLeft,
-        state: this.roundState
-      });
+    this.broadcast({
+      type: 'time_sync',
+      timeLeft: this.timeLeft,
+      state: this.roundState
+    });
 
-      if (this.timeLeft <= 0) {
-        this.endRound();
-      }
-    } else if (this.roundState === 'intermission') {
-      this.timeLeft--;
-      this.broadcast({
-        type: 'time_sync',
-        timeLeft: this.timeLeft,
-        state: this.roundState
-      });
-
-      if (this.timeLeft <= 0) {
-        this.startNewRound();
-      }
+    if (this.timeLeft <= 0) {
+      this.endRound();
     }
   }
 
-  endRound() {
-    this.roundState = 'intermission';
-    this.timeLeft = INTERMISSION_SEC;
+  endRoundWithWinner(winner, reason) {
+    this.roundState = 'finished';
+    this.clearPause();
+    if (this.roundTimer) {
+      clearInterval(this.roundTimer);
+      this.roundTimer = null;
+    }
     this.targets.clear();
 
-    // Вычисляем победителя и обновляем рекорды
-    const playersList = this.getPlayersList();
-    playersList.sort((a, b) => b.score - a.score);
-    const winner = playersList[0] || null;
+    const scoreboard = this.getPlayersList();
+    this.updateHallOfFame(winner.name, winner.score, winner.accuracy);
+    this.scheduleSave();
 
-    // Сохранение рекордов в Hall of Fame
-    for (const p of playersList) {
+    this.broadcast({
+      type: 'round_ended',
+      winner,
+      scoreboard,
+      hallOfFame: this.hallOfFame,
+      reason
+    });
+  }
+
+  endRound() {
+    this.roundState = 'finished';
+    this.clearPause();
+    if (this.roundTimer) {
+      clearInterval(this.roundTimer);
+      this.roundTimer = null;
+    }
+    this.targets.clear();
+
+    const scoreboard = this.getPlayersList();
+    const winner = scoreboard[0] || null;
+
+    for (const p of scoreboard) {
       if (p.score > 0) {
         this.updateHallOfFame(p.name, p.score, p.accuracy);
       }
     }
-
-    const matchSummary = {
-      id: 'match_' + Date.now(),
-      timestamp: Date.now(),
-      winner: winner ? { name: winner.name, score: winner.score } : null,
-      topPlayers: playersList.slice(0, 3)
-    };
-    this.matchHistory.unshift(matchSummary);
-    if (this.matchHistory.length > 20) this.matchHistory.pop();
 
     this.scheduleSave();
 
     this.broadcast({
       type: 'round_ended',
       winner,
-      scoreboard: playersList,
-      nextRoundIn: INTERMISSION_SEC,
+      scoreboard,
       hallOfFame: this.hallOfFame
     });
   }
 
-  // --- Мишени (Targets) ---
   spawnTarget() {
-    if (this.roundState !== 'running') return null;
+    if (this.roundState !== 'running' || this.isPaused) return null;
 
     const id = 't_' + Math.random().toString(36).substring(2, 8);
     const types = [
@@ -196,12 +325,11 @@ class AimGame {
       { type: 'bomb', color: '#ff4757', radius: 24, points: -20, lifetime: 2600 }
     ];
 
-    // Выбираем тип с весами
     const rand = Math.random();
     let selectedType = types[0];
-    if (rand < 0.15) selectedType = types[3]; // бомба 15%
-    else if (rand < 0.35) selectedType = types[2]; // золотая 20%
-    else if (rand < 0.65) selectedType = types[1]; // бонус 30%
+    if (rand < 0.15) selectedType = types[3];
+    else if (rand < 0.35) selectedType = types[2];
+    else if (rand < 0.65) selectedType = types[1];
 
     const padding = 50;
     const x = Math.floor(padding + Math.random() * (this.width - padding * 2));
@@ -225,33 +353,26 @@ class AimGame {
     return target;
   }
 
-  // --- Обработка выстрела и Конфликтов (Требование 1 дополнительно) ---
   handleShoot(playerId, targetId, clientTimestamp, expectedVersion) {
     const player = this.players.get(playerId);
-    if (!player || this.roundState !== 'running') return null;
+    if (!player || !player.connected || this.roundState !== 'running' || this.isPaused) return null;
 
     const now = Date.now();
 
-    // 1. Проверка: возможно мишень уже была поражена кем-то другим в этот же момент (КОНФЛИКТ!)
     if (this.recentHits.has(targetId)) {
       const prevHit = this.recentHits.get(targetId);
       const deltaMs = now - prevHit.hitTime;
 
-      // Конкурентная коллизия: два игрока нажали на одну цель почти одновременно
       const conflict = {
-        id: 'conf_' + now + '_' + Math.floor(Math.random() * 1000),
+        id: 'conf_' + now,
         targetId,
         timestamp: now,
         winnerPlayer: prevHit.hitBy.name,
         looserPlayer: player.name,
         deltaMs,
-        resolution: `Игрок ${prevHit.hitBy.name} опередил на ${deltaMs}мс (LWW)`
+        resolution: `Игрок ${prevHit.hitBy.name} успел первым (-${deltaMs}мс)`
       };
 
-      this.conflictLogs.unshift(conflict);
-      if (this.conflictLogs.length > 50) this.conflictLogs.pop();
-
-      // Оповещаем участников о конфликте
       this.broadcast({
         type: 'target_conflict',
         conflict,
@@ -260,28 +381,20 @@ class AimGame {
 
       player.misses++;
       this.updatePlayerAccuracy(player);
-
-      return {
-        success: false,
-        conflict,
-        reason: `Цель уже поражена игроком ${prevHit.hitBy.name} (${deltaMs}мс назад)`
-      };
+      return { success: false, conflict };
     }
 
-    // 2. Проверка активной мишени
     const target = this.targets.get(targetId);
     if (!target) {
       player.misses++;
       this.updatePlayerAccuracy(player);
-      return { success: false, reason: 'Цель уже исчезла' };
+      return { success: false };
     }
 
-    // Попадание!
     player.hits++;
     player.score = Math.max(0, player.score + target.points);
     this.updatePlayerAccuracy(player);
 
-    // Запоминаем факт попадания для выявления последующих конкурентных кликов
     this.recentHits.set(targetId, {
       hitBy: { id: player.id, name: player.name },
       hitTime: now,
@@ -289,13 +402,9 @@ class AimGame {
       targetPos: { x: target.x, y: target.y }
     });
 
-    // Очищаем старые записи через 2 секунды
     setTimeout(() => this.recentHits.delete(targetId), 2000);
-
-    // Удаляем пораженную мишень
     this.targets.delete(targetId);
 
-    // Транслируем всем игрокам попадание
     this.broadcast({
       type: 'target_hit',
       targetId,
@@ -309,15 +418,13 @@ class AimGame {
       players: this.getPlayersList()
     });
 
-    // Спавним новую мишень взамен
     setTimeout(() => this.spawnTarget(), 150);
-
-    return { success: true, points: target.points };
+    return { success: true };
   }
 
   handleMiss(playerId) {
     const player = this.players.get(playerId);
-    if (player && this.roundState === 'running') {
+    if (player && player.connected && this.roundState === 'running' && !this.isPaused) {
       player.misses++;
       this.updatePlayerAccuracy(player);
       this.broadcast({
@@ -339,25 +446,18 @@ class AimGame {
     player.accuracy = total > 0 ? Math.round((player.hits / total) * 100) : 100;
   }
 
-  // --- Офлайн синхронизация (Требование 2 дополнительно) ---
   syncOfflineShots(playerId, shots) {
     const player = this.players.get(playerId);
-    if (!player || !Array.isArray(shots)) return { processed: 0, conflicts: 0 };
+    if (!player || !player.connected || !Array.isArray(shots)) return { processed: 0 };
 
     let processed = 0;
-    let conflicts = 0;
-
     for (const shot of shots) {
       if (shot.targetId) {
         const res = this.handleShoot(playerId, shot.targetId, shot.timestamp, shot.version);
-        if (res) {
-          processed++;
-          if (res.conflict) conflicts++;
-        }
+        if (res) processed++;
       }
     }
-
-    return { processed, conflicts };
+    return { processed };
   }
 
   updateHallOfFame(name, score, accuracy) {
@@ -380,21 +480,8 @@ class AimGame {
     this.hallOfFame = this.hallOfFame.slice(0, 10);
   }
 
-  addChatMessage(playerId, playerName, text) {
-    const msg = {
-      id: 'msg_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
-      playerId,
-      playerName,
-      text: String(text).slice(0, 150),
-      timestamp: Date.now()
-    };
-    this.chatMessages.push(msg);
-    if (this.chatMessages.length > 50) this.chatMessages.shift();
-    return msg;
-  }
-
   getPlayersList() {
-    return Array.from(this.players.values()).map(p => ({
+    const list = Array.from(this.players.values()).map(p => ({
       id: p.id,
       name: p.name,
       color: p.color,
@@ -402,9 +489,12 @@ class AimGame {
       hits: p.hits,
       misses: p.misses,
       accuracy: p.accuracy,
+      connected: p.connected,
       cursorX: p.cursorX,
       cursorY: p.cursorY
     }));
+    list.sort((a, b) => b.score - a.score);
+    return list;
   }
 
   getSnapshot() {
@@ -414,35 +504,27 @@ class AimGame {
       roundState: this.roundState,
       timeLeft: this.timeLeft,
       roundDuration: ROUND_DURATION_SEC,
+      isPaused: this.isPaused,
+      pausedPlayerName: this.pausedPlayer ? this.pausedPlayer.name : null,
+      pauseSecondsLeft: this.pauseSecondsLeft,
       targets: Array.from(this.targets.values()),
       players: this.getPlayersList(),
-      hallOfFame: this.hallOfFame,
-      conflictLogs: this.conflictLogs.slice(0, 20),
-      chatMessages: this.chatMessages.slice(-25),
-      serverTime: Date.now()
+      hallOfFame: this.hallOfFame
     };
   }
 
   scheduleSave() {
-    storage.saveDebounced(this.toSerializable());
+    storage.saveDebounced({
+      hallOfFame: this.hallOfFame,
+      savedAt: Date.now()
+    });
   }
 
   saveImmediate() {
-    storage.saveSync(this.toSerializable());
-  }
-
-  toSerializable() {
-    return {
+    storage.saveSync({
       hallOfFame: this.hallOfFame,
-      matchHistory: this.matchHistory.slice(0, 20),
-      conflictLogs: this.conflictLogs.slice(0, 30),
       savedAt: Date.now()
-    };
-  }
-
-  getRandomColor() {
-    const colors = ['#00f5d4', '#7b2cbf', '#ffbe0b', '#fb5607', '#ff006e', '#3a86ff'];
-    return colors[Math.floor(Math.random() * colors.length)];
+    });
   }
 }
 

@@ -14,12 +14,10 @@ const MIME_TYPES = {
   '.json': 'application/json; charset=UTF-8',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
-  '.gif': 'image/gif',
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon'
 };
 
-// --- HTTP СЕРВЕР (БЕЗ ФРЕЙМВОРКОВ) ---
 const server = http.createServer((req, res) => {
   let reqPath = req.url.split('?')[0];
   if (reqPath === '/' || reqPath === '') {
@@ -31,14 +29,14 @@ const server = http.createServer((req, res) => {
 
   if (!filePath.startsWith(PUBLIC_DIR)) {
     res.writeHead(403, { 'Content-Type': 'text/plain; charset=UTF-8' });
-    res.end('403 Доступ запрещен');
+    res.end('403');
     return;
   }
 
   fs.stat(filePath, (err, stats) => {
     if (err || !stats.isFile()) {
       res.writeHead(404, { 'Content-Type': 'text/plain; charset=UTF-8' });
-      res.end('404 Файл не найден');
+      res.end('404');
       return;
     }
 
@@ -50,12 +48,10 @@ const server = http.createServer((req, res) => {
       'Cache-Control': 'no-cache'
     });
 
-    const stream = fs.createReadStream(filePath);
-    stream.pipe(res);
+    fs.createReadStream(filePath).pipe(res);
   });
 });
 
-// --- WEBSOCKET СЕРВЕР ---
 const wss = new WebSocketServer({ server });
 
 function broadcast(data, excludeWs = null) {
@@ -98,8 +94,15 @@ wss.on('connection', (ws) => {
             player: playerInfo,
             players: game.getPlayersList()
           }, ws);
+          break;
+        }
 
-          console.log(`[WS] Стрелок ${playerInfo.name} присоединился к арене`);
+        case 'start_game': {
+          if (!playerInfo) return;
+          const res = game.startGame(playerId);
+          if (!res.success) {
+            send({ type: 'error', message: res.reason });
+          }
           break;
         }
 
@@ -117,13 +120,7 @@ wss.on('connection', (ws) => {
 
         case 'shoot': {
           if (!playerInfo) return;
-          const result = game.handleShoot(playerId, msg.targetId, msg.clientTimestamp, msg.expectedVersion);
-          if (result && !result.success && result.conflict) {
-            send({
-              type: 'conflict_feedback',
-              message: result.reason
-            });
-          }
+          game.handleShoot(playerId, msg.targetId, msg.clientTimestamp, msg.expectedVersion);
           break;
         }
 
@@ -135,42 +132,25 @@ wss.on('connection', (ws) => {
 
         case 'sync_offline_shots': {
           if (!playerInfo) return;
-          const { processed, conflicts } = game.syncOfflineShots(playerId, msg.shots || []);
+          const { processed } = game.syncOfflineShots(playerId, msg.shots || []);
           send({
             type: 'sync_completed',
             processed,
-            conflicts,
             snapshot: game.getSnapshot()
           });
           break;
         }
 
-        case 'chat': {
-          if (!playerInfo) return;
-          const chatMsg = game.addChatMessage(playerId, playerInfo.name, msg.text);
-          broadcast({
-            type: 'chat_message',
-            message: chatMsg
-          });
-          break;
-        }
-
         case 'ping': {
-          send({ type: 'pong', timestamp: Date.now() });
+          send({ type: 'pong' });
           break;
         }
-
-        default:
-          console.warn('[WS] Неизвестное сообщение:', msg.type);
       }
-    } catch (err) {
-      console.error('[WS Error]', err);
-    }
+    } catch {}
   });
 
   ws.on('close', () => {
     if (playerInfo) {
-      console.log(`[WS] Стрелок ${playerInfo.name} покинул арену`);
       game.removePlayer(playerId);
       broadcast({
         type: 'player_left',
@@ -180,13 +160,10 @@ wss.on('connection', (ws) => {
     }
   });
 
-  ws.on('error', (err) => {
-    console.error(`[WS Error] Клиент ${playerId}:`, err.message);
-  });
+  ws.on('error', () => {});
 });
 
 const shutdown = () => {
-  console.log('\n[Server] Завершение работы, сохранение рекордов Aim Arena...');
   game.saveImmediate();
   process.exit(0);
 };
@@ -195,9 +172,5 @@ process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
 server.listen(PORT, () => {
-  console.log(`===================================================`);
-  console.log(`🎯 Сервер сетевого Aim Arena (Aim Lab) запущен!`);
-  console.log(`🌐 Адрес: http://localhost:${PORT}`);
-  console.log(`🔌 WebSockets: ws://localhost:${PORT}`);
-  console.log(`===================================================`);
+  console.log(`Server started on port ${PORT}`);
 });

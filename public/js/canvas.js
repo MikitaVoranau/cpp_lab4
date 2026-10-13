@@ -1,27 +1,16 @@
-/**
- * Графический движок Aim Lab на Canvas
- * Отвечает за:
- * - Рендеринг интерактивной арены 1000x650
- * - Анимацию и отрисовку исчезающих мишеней с таймером
- * - Взрывы частиц при попадании
- * - Визуализацию лазерных прицелов других игроков
- * - Эффект коллизии/конфликта при одновременном выстреле
- */
-
 class AimCanvas {
   constructor(canvasElement) {
     this.canvas = canvasElement;
     this.ctx = canvasElement.getContext('2d');
 
-    // Логический размер арены для всех игроков
     this.arenaWidth = 1000;
     this.arenaHeight = 650;
     this.scale = 1.0;
     this.offsetX = 0;
     this.offsetY = 0;
 
-    this.targets = new Map(); // id => target
-    this.remoteCursors = new Map(); // id => { x, y, name, color }
+    this.targets = new Map();
+    this.remoteCursors = new Map();
     this.particles = [];
     this.floatingTexts = [];
     this.conflictFlashes = [];
@@ -29,10 +18,11 @@ class AimCanvas {
     this.mouseX = -100;
     this.mouseY = -100;
     this.myColor = '#00f5d4';
+    this.isPaused = false;
 
-    this.onTargetClick = null; // callback(targetId, expectedVersion)
-    this.onMissClick = null; // callback()
-    this.onCursorMove = null; // callback(arenaX, arenaY)
+    this.onTargetClick = null;
+    this.onMissClick = null;
+    this.onCursorMove = null;
 
     this.initEvents();
     this.resizeCanvas();
@@ -47,10 +37,9 @@ class AimCanvas {
     this.canvas.width = rect.width;
     this.canvas.height = rect.height;
 
-    // Сохраняем соотношение сторон арены (1000 x 650)
     const scaleX = this.canvas.width / this.arenaWidth;
     const scaleY = this.canvas.height / this.arenaHeight;
-    this.scale = Math.min(scaleX, scaleY) * 0.96; // 96% для отступов
+    this.scale = Math.min(scaleX, scaleY) * 0.96;
 
     this.offsetX = (this.canvas.width - this.arenaWidth * this.scale) / 2;
     this.offsetY = (this.canvas.height - this.arenaHeight * this.scale) / 2;
@@ -74,20 +63,17 @@ class AimCanvas {
     });
 
     this.canvas.addEventListener('mousedown', (e) => {
-      if (e.button !== 0) return; // только ЛКМ
+      if (e.button !== 0 || this.isPaused) return;
 
       const rect = this.canvas.getBoundingClientRect();
       const arenaX = (e.clientX - rect.left - this.offsetX) / this.scale;
       const arenaY = (e.clientY - rect.top - this.offsetY) / this.scale;
 
-      // Проверяем попадание по мишеням (начиная с самых верхних)
       let hitTarget = null;
       for (const target of Array.from(this.targets.values()).reverse()) {
         const dx = arenaX - target.x;
         const dy = arenaY - target.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-
-        if (dist <= target.radius) {
+        if (Math.sqrt(dx * dx + dy * dy) <= target.radius) {
           hitTarget = target;
           break;
         }
@@ -95,36 +81,13 @@ class AimCanvas {
 
       if (hitTarget) {
         if (this.onTargetClick) {
-          this.onTargetClick(hitTarget.id, hitTarget.version, arenaX, arenaY);
+          this.onTargetClick(hitTarget.id, hitTarget.version);
         }
       } else {
         if (this.onMissClick) {
           this.onMissClick();
         }
-        // Создаем маленький всплеск промаха
         this.addMissParticle(arenaX, arenaY);
-      }
-    });
-
-    // Для тачпадов и экранов
-    this.canvas.addEventListener('touchstart', (e) => {
-      if (e.touches.length > 0) {
-        const touch = e.touches[0];
-        const rect = this.canvas.getBoundingClientRect();
-        const arenaX = (touch.clientX - rect.left - this.offsetX) / this.scale;
-        const arenaY = (touch.clientY - rect.top - this.offsetY) / this.scale;
-
-        for (const target of Array.from(this.targets.values()).reverse()) {
-          const dx = arenaX - target.x;
-          const dy = arenaY - target.y;
-          if (Math.sqrt(dx * dx + dy * dy) <= target.radius) {
-            if (this.onTargetClick) {
-              this.onTargetClick(target.id, target.version, arenaX, arenaY);
-            }
-            return;
-          }
-        }
-        if (this.onMissClick) this.onMissClick();
       }
     });
   }
@@ -145,11 +108,10 @@ class AimCanvas {
   }
 
   addHitEffect(x, y, color, points) {
-    // Взрыв частиц
-    const count = 16;
+    const count = 14;
     for (let i = 0; i < count; i++) {
       const angle = Math.random() * Math.PI * 2;
-      const speed = 2 + Math.random() * 5;
+      const speed = 2 + Math.random() * 4;
       this.particles.push({
         x,
         y,
@@ -158,11 +120,10 @@ class AimCanvas {
         radius: 2 + Math.random() * 3,
         color,
         alpha: 1.0,
-        decay: 0.03 + Math.random() * 0.02
+        decay: 0.035
       });
     }
 
-    // Всплывающий текст очков
     const text = points > 0 ? `+${points}` : `${points}`;
     this.floatingTexts.push({
       x,
@@ -170,12 +131,12 @@ class AimCanvas {
       text,
       color: points > 0 ? color : '#ff4757',
       alpha: 1.0,
-      vy: -1.6
+      vy: -1.5
     });
   }
 
   addMissParticle(x, y) {
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 5; i++) {
       const angle = Math.random() * Math.PI * 2;
       const speed = 1 + Math.random() * 2;
       this.particles.push({
@@ -197,7 +158,7 @@ class AimCanvas {
       y,
       startTime: performance.now(),
       duration: 1200,
-      text: `⚡ ОПЕРЕДИЛ: ${conflict.winnerPlayer} (-${conflict.deltaMs}мс)`
+      text: `⚡ ${conflict.winnerPlayer} (-${conflict.deltaMs}мс)`
     });
   }
 
@@ -222,7 +183,6 @@ class AimCanvas {
     const now = Date.now();
     const perfNow = performance.now();
 
-    // 1. Очистка холста
     ctx.fillStyle = '#0a0c10';
     ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
@@ -230,11 +190,9 @@ class AimCanvas {
     ctx.translate(this.offsetX, this.offsetY);
     ctx.scale(this.scale, this.scale);
 
-    // 2. Фон арены и киберспортивная сетка
     ctx.fillStyle = '#10141d';
     ctx.fillRect(0, 0, this.arenaWidth, this.arenaHeight);
 
-    // Сетка
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
     ctx.lineWidth = 1;
     const step = 50;
@@ -249,12 +207,10 @@ class AimCanvas {
     }
     ctx.stroke();
 
-    // Границы арены с неоновым свечением
     ctx.strokeStyle = '#00f5d4';
     ctx.lineWidth = 2.5;
     ctx.strokeRect(0, 0, this.arenaWidth, this.arenaHeight);
 
-    // 3. Отрисовка мишеней (Targets)
     for (const target of this.targets.values()) {
       const elapsed = now - target.spawnTime;
       const remainingRatio = Math.max(0, 1 - elapsed / target.lifetime);
@@ -262,14 +218,12 @@ class AimCanvas {
       ctx.save();
       ctx.translate(target.x, target.y);
 
-      // Внешнее пульсирующее кольцо таймера жизни
       ctx.strokeStyle = target.color;
       ctx.lineWidth = 3;
       ctx.beginPath();
       ctx.arc(0, 0, target.radius + 5, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * remainingRatio);
       ctx.stroke();
 
-      // Тело мишени (градиент)
       const grad = ctx.createRadialGradient(0, 0, 2, 0, 0, target.radius);
       grad.addColorStop(0, '#ffffff');
       grad.addColorStop(0.4, target.color);
@@ -280,7 +234,6 @@ class AimCanvas {
       ctx.arc(0, 0, target.radius, 0, Math.PI * 2);
       ctx.fill();
 
-      // Внутреннее перекрестие мишени
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
       ctx.lineWidth = 1.5;
       ctx.beginPath();
@@ -290,7 +243,6 @@ class AimCanvas {
       ctx.lineTo(0, target.radius * 0.5);
       ctx.stroke();
 
-      // Иконка бомбы или бонус
       if (target.type === 'bomb') {
         ctx.fillStyle = '#ffffff';
         ctx.font = 'bold 12px sans-serif';
@@ -308,7 +260,6 @@ class AimCanvas {
       ctx.restore();
     }
 
-    // 4. Отрисовка частиц взрывов
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const p = this.particles[i];
       p.x += p.vx;
@@ -329,7 +280,6 @@ class AimCanvas {
       ctx.restore();
     }
 
-    // 5. Отрисовка всплывающего текста
     for (let i = this.floatingTexts.length - 1; i >= 0; i--) {
       const ft = this.floatingTexts[i];
       ft.y += ft.vy;
@@ -349,7 +299,6 @@ class AimCanvas {
       ctx.restore();
     }
 
-    // 6. Отрисовка вспышек конфликтов (Требование 1 дополнительно)
     for (let i = this.conflictFlashes.length - 1; i >= 0; i--) {
       const cf = this.conflictFlashes[i];
       const elapsed = perfNow - cf.startTime;
@@ -376,12 +325,10 @@ class AimCanvas {
       ctx.restore();
     }
 
-    // 7. Отрисовка курсоров других игроков
-    for (const [id, remote] of this.remoteCursors.entries()) {
+    for (const remote of this.remoteCursors.values()) {
       ctx.save();
       ctx.translate(remote.x, remote.y);
 
-      // Прицел
       ctx.strokeStyle = remote.color || '#ff0055';
       ctx.lineWidth = 1.5;
       ctx.beginPath();
@@ -390,7 +337,6 @@ class AimCanvas {
       ctx.moveTo(0, -12); ctx.lineTo(0, 12);
       ctx.stroke();
 
-      // Бейдж имени
       ctx.font = '10px sans-serif';
       ctx.fillStyle = 'rgba(10, 12, 16, 0.85)';
       const textW = ctx.measureText(remote.name).width;
@@ -401,7 +347,6 @@ class AimCanvas {
       ctx.restore();
     }
 
-    // 8. Собственный прицел игрока (Crosshair)
     if (this.mouseX >= 0 && this.mouseX <= this.arenaWidth && this.mouseY >= 0 && this.mouseY <= this.arenaHeight) {
       ctx.save();
       ctx.translate(this.mouseX, this.mouseY);
@@ -416,7 +361,6 @@ class AimCanvas {
       ctx.moveTo(0, 6); ctx.lineTo(0, 18);
       ctx.stroke();
 
-      // Центральная точка
       ctx.fillStyle = '#ffffff';
       ctx.beginPath();
       ctx.arc(0, 0, 2, 0, Math.PI * 2);

@@ -19,13 +19,10 @@ class Storage {
   load() {
     try {
       if (fs.existsSync(DATA_FILE)) {
-        const raw = fs.readFileSync(DATA_FILE, 'utf-8');
-        const data = JSON.parse(raw);
-        console.log(`[Storage] Успешно загружена статистика Aim Arena из ${DATA_FILE}`);
-        return data;
+        return JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8'));
       }
-    } catch (err) {
-      console.error('[Storage] Ошибка чтения aim_gamestate.json:', err.message);
+    } catch {
+      return null;
     }
     return null;
   }
@@ -43,13 +40,9 @@ class Storage {
     try {
       this.ensureDir();
       const tempFile = `${DATA_FILE}.tmp`;
-      const json = JSON.stringify(state, null, 2);
-      fs.writeFileSync(tempFile, json, 'utf-8');
+      fs.writeFileSync(tempFile, JSON.stringify(state, null, 2), 'utf-8');
       fs.renameSync(tempFile, DATA_FILE);
-      console.log(`[Storage] Статистика Aim Arena сохранена на диск (${new Date().toLocaleTimeString()})`);
-    } catch (err) {
-      console.error('[Storage] Ошибка сохранения aim_gamestate.json:', err.message);
-    }
+    } catch {}
   }
 }
 

@@ -1,8 +1,3 @@
-/**
- * Аудио-движок на нативном Web Audio API
- * Не требует скачивания mp3 файлов, генерирует звуки процедурно в браузере.
- */
-
 class SoundEffects {
   constructor() {
     this.ctx = null;

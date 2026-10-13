@@ -1,7 +1,3 @@
-/**
- * Сетевой менеджер Aim Lab на чистых WebSockets
- */
-
 class NetworkManager {
   constructor() {
     this.ws = null;
@@ -31,7 +27,6 @@ class NetworkManager {
 
   initBrowserNetworkListeners() {
     window.addEventListener('online', () => {
-      console.log('[Network] Сеть восстановлена');
       this.emit('network_status', { online: true });
       if (!this.isSimulatingOffline && !this.isConnected) {
         this.connect();
@@ -39,7 +34,6 @@ class NetworkManager {
     });
 
     window.addEventListener('offline', () => {
-      console.log('[Network] Сеть пропала');
       this.emit('network_status', { online: false });
       if (this.ws) {
         this.ws.close();
@@ -65,7 +59,6 @@ class NetworkManager {
       this.ws = new WebSocket(wsUrl);
 
       this.ws.onopen = () => {
-        console.log('[Network] WebSocket подключен!');
         this.isConnected = true;
         this.reconnectAttempts = 0;
         this.emit('connected');
@@ -84,9 +77,7 @@ class NetworkManager {
         try {
           const msg = JSON.parse(event.data);
           this.handleIncoming(msg);
-        } catch (err) {
-          console.error('[Network Error]', err);
-        }
+        } catch {}
       };
 
       this.ws.onclose = () => {
@@ -98,10 +89,8 @@ class NetworkManager {
         }
       };
 
-      this.ws.onerror = (err) => {
-        console.error('[Network Error]', err);
-      };
-    } catch (e) {
+      this.ws.onerror = () => {};
+    } catch {
       this.scheduleReconnect();
     }
   }
@@ -135,7 +124,6 @@ class NetworkManager {
     if (this.isConnected) {
       this.send(action);
     } else {
-      // Сохранение выстрела в офлайн-очередь (Дополнительно: 8-10 баллов)
       window.clientStorage.enqueueOfflineShot(action);
       this.emit('offline_shot_queued', { action, count: window.clientStorage.getOfflineQueue().length });
     }
@@ -156,7 +144,6 @@ class NetworkManager {
   flushOfflineQueue() {
     const queue = window.clientStorage.getOfflineQueue();
     if (queue.length > 0) {
-      console.log(`[Network] Синхронизация ${queue.length} офлайн-выстрелов...`);
       this.send({
         type: 'sync_offline_shots',
         shots: queue
@@ -167,26 +154,7 @@ class NetworkManager {
   }
 
   handleIncoming(msg) {
-    switch (msg.type) {
-      case 'init_state':
-      case 'round_started':
-      case 'round_ended':
-      case 'time_sync':
-      case 'target_spawned':
-      case 'target_hit':
-      case 'target_expired':
-      case 'target_conflict':
-      case 'cursor_update':
-      case 'player_joined':
-      case 'player_left':
-      case 'player_stats_update':
-      case 'chat_message':
-      case 'sync_completed':
-        this.emit(msg.type, msg);
-        break;
-      default:
-        console.log('[Network] msg:', msg);
-    }
+    this.emit(msg.type, msg);
   }
 
   toggleSimulateOffline() {
